@@ -21,22 +21,52 @@ def start_board():
 # ------------------------------------------------------------------------------    
 def board(ip, port, sockobj, thiscommhandle, listencommhandle):
   try:
-    msgheader = sockobj.recv(1024) # Receive message, 
+    msgheader = sockobj.recv(1024) # Receive message 
     # React depending on message type: HTTP GET or POST, or some other type of communication.
     if msgheader.startswith( 'GET' ):
-      htmlresponse = generate_html_page()
-      sockobj.send("HTTP/1.1 200 OK\r\nContent-type: text/html\r\n" + \
-      "Content-length: %i\r\n\r\n%s" % (len(htmlresponse), htmlresponse))
+      send_html(sockobj)
       stopcomm(thiscommhandle)   
     elif msgheader.startswith( 'POST' ):
-    	print "got POST:\n", msgheader
+      print "got POST:\n", msgheader
+      newentry = msgheader[msgheader.find('comment=')+8:] + '<br>'
+
+      send_vessel_data(newentry)
+      mycontext['entry'] = newentry + mycontext['entry']    
+      send_html(sockobj)
+
+      stopcomm(thiscommhandle)
+    elif msgheader.startswith( 'VESSELDATA' ):
+      print "got VESSELDATA:\n", msgheader
+      mycontext['entry'] = msgheader[msgheader.find('comment=')+8:] + mycontext['entry']
+      stopcomm(thiscommhandle)
     else:
-    	print "got something:\n", msgheader
+      print "got something:\n", msgheader
+      stopcomm(thiscommhandle)
   except Exception as e:
     print "Exception in board: %s, %s\n" %(type(e), e)
     raise
     #pass
-    
+
+# ------------------------------------------------------------------------------
+# Sends new entry to all other vessels 
+# ------------------------------------------------------------------------------   
+def send_vessel_data(entry):
+  for (vesselip, vesselport) in mycontext['vessels']:
+    if vesselip != mycontext['ip'] or vesselport != mycontext['port']:
+      sockobjVessel = openconn(vesselip, vesselport)
+      bytesent = sockobjVessel.send('VESSELDATA\ncomment=' + entry)
+      sockobjVessel.close()
+  return
+
+# ------------------------------------------------------------------------------
+# Sends new html page to client 
+# ------------------------------------------------------------------------------   
+def send_html(sockobj):
+  htmlresponse = generate_html_page()
+  sockobj.send("HTTP/1.1 200 OK\r\nContent-type: text/html\r\n" + \
+  "Content-length: %i\r\n\r\n%s" % (len(htmlresponse), htmlresponse))
+  return
+ 
 # ------------------------------------------------------------------------------
 # Outputs the blackboard html 
 # Optional parameters are message and error which are introduced as headers into the html.
@@ -45,7 +75,7 @@ def generate_html_page(status=""):
   #Initialize blackboard content
   
   # one sample entry
-  entry = "Empty..."
+  entry = mycontext['entry']
   content ='<div class="entry">%s</div>' %( entry )
   
   # dynamic title showing Ip address, port and up time.
@@ -55,13 +85,9 @@ def generate_html_page(status=""):
   # and wrapping all with <div id="boardcontents_placeholder”>...</div>
   content = '<div id="boardcontents_placeholder">%s%s</div>' %(board_title, content)   
 
-  # An optional status message
   status_message = "<div class='status'>%s</div>" % (status)
-  
-  #Concatenate strings into huge string representing the final html
   content = "".join([mycontext['headerhtml'], status_message, content, mycontext['footerhtml']])
   
-  #print content
   return content
   
 # ------------------------------------------------------------------------------    
@@ -87,11 +113,11 @@ if callfunc == 'initialize':
   else:
     raise Exception("Specify a port only for auto detection of IP, or specify IP and port")
 
-  #Initialize Port and IP
+  # Initialize mycontext
   mycontext['port'] = port
   mycontext['ip'] = ip
-  
-  #read header and footer html files
+  mycontext['vessels'] = [('127.0.0.1', 63100), ('127.0.0.1', 63101)]
+  mycontext['entry'] = ""
   mycontext['headerhtml'] = file("header.html").read()
   mycontext['footerhtml'] = file("footer.html").read()
 
