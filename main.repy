@@ -13,7 +13,7 @@ def start_board():
       listencommhandle = waitforconn(ip,port,board)
     except Exception, e:
       print "Exception in start_board: %s, %s\n" %(type(e), e)
-      raise
+      print "Will try again"
       #pass
 
 # ------------------------------------------------------------------------------    
@@ -28,16 +28,17 @@ def board(ip, port, sockobj, thiscommhandle, listencommhandle):
       send_html(sockobj)
       stopcomm(thiscommhandle)   
     elif msgheader.startswith( 'POST' ):
+      print "Vessel IP: %s Port: %s " %(mycontext['ip'], mycontext['port'])
       print "got POST:\n", msgheader
       newentry = msgheader[msgheader.find('comment=')+8:] + '<br>'
+      mycontext['entry'] = newentry + mycontext['entry']
+
+      send_html(sockobj)
+      stopcomm(thiscommhandle)
 
       send_vessel_data(newentry)
-      mycontext['entry'] = newentry + mycontext['entry']    
-      send_html(sockobj)
-
-      stopcomm(thiscommhandle)
     elif msgheader.startswith( 'VESSELDATA' ):
-      print "got VESSELDATA:\n", msgheader
+      print "Vessel IP:%s Port:%s got:%s" %(mycontext['ip'], mycontext['port'], msgheader)
       mycontext['entry'] = msgheader[msgheader.find('comment=')+8:] + mycontext['entry']
       stopcomm(thiscommhandle)
     else:
@@ -45,7 +46,7 @@ def board(ip, port, sockobj, thiscommhandle, listencommhandle):
       stopcomm(thiscommhandle)
   except Exception, e:
     print "Exception in board: %s, %s\n" %(type(e), e)
-    raise
+    #raise
     #pass
 
 # ------------------------------------------------------------------------------
@@ -54,9 +55,13 @@ def board(ip, port, sockobj, thiscommhandle, listencommhandle):
 def send_vessel_data(entry):
   for (vesselip, vesselport) in mycontext['vessels']:
     if vesselip != mycontext['ip'] or vesselport != mycontext['port']:
-      sockobjVessel = openconn(vesselip, vesselport)
-      bytesent = sockobjVessel.send('VESSELDATA\ncomment=' + entry)
-      sockobjVessel.close()
+      try:
+        sockobjVessel = openconn(vesselip, vesselport)
+        bytesent = sockobjVessel.send('VESSELDATA\ncomment=' + entry)
+        sockobjVessel.close()
+      except Exception, e:
+        print "Exception in send_vessel_data: %s, %s\n" %(type(e), e)
+        print "for IP: %s & Port: %s Continues with next vessel\n" %(vesselip, vesselport)
   return
 
 # ------------------------------------------------------------------------------
@@ -121,7 +126,7 @@ if callfunc == 'initialize':
   # Initialize mycontext
   mycontext['port'] = port
   mycontext['ip'] = ip
-  mycontext['vessels'] = [('127.0.0.1', 63100), ('127.0.0.1', 63101)]
+  mycontext['vessels'] = [('127.0.0.1', 63100), ('127.0.0.1', 63101), ('127.0.0.1', 63102), ('127.0.0.1', 63103), ('127.0.0.1', 63104), ('127.0.0.1', 63105), ('127.0.0.1', 63106), ('127.0.0.1', 63107)]
   mycontext['entry'] = ""
   mycontext['headerhtml'] = file("header.html").read()
   mycontext['footerhtml'] = file("footer.html").read()
