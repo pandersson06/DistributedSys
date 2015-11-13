@@ -46,7 +46,6 @@ def board(ip, port, sockobj, thiscommhandle, listencommhandle):
       stopcomm(thiscommhandle)
   except Exception, e:
     print "Exception in board: %s, %s\n" %(type(e), e)
-    #raise
     #pass
 
 # ------------------------------------------------------------------------------
@@ -96,8 +95,7 @@ def generate_html_page(status=""):
 
   #Concatenate strings into huge string representing the final html
   content = "".join([mycontext['headerhtml'], status_message, content, mycontext['footerhtml']])
-  
-  #print content
+
   return content
   
 # ------------------------------------------------------------------------------    
@@ -126,7 +124,7 @@ if callfunc == 'initialize':
   # Initialize mycontext
   mycontext['port'] = port
   mycontext['ip'] = ip
-  mycontext['vessels'] = [('127.0.0.1', 63100), ('127.0.0.1', 63101), ('127.0.0.1', 63102), ('127.0.0.1', 63103), ('127.0.0.1', 63104), ('127.0.0.1', 63105), ('127.0.0.1', 63106), ('127.0.0.1', 63107)]
+  mycontext['vessels'] = [('127.0.0.1', 63100), ('127.0.0.1', 63101)]
   mycontext['entry'] = ""
   mycontext['headerhtml'] = file("header.html").read()
   mycontext['footerhtml'] = file("footer.html").read()
