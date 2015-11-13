@@ -7,14 +7,13 @@
 def start_board():
   ip = mycontext['ip']
   port = mycontext['port']
-  print("Listening on IP " + str(ip) +" port " + str(port) + "\n")
+  print "Listening on IP " + str(ip) +" port " + str(port) + "\n"
   while True:
     try: 
       listencommhandle = waitforconn(ip,port,board)
     except Exception, e:
       print "Exception in start_board: %s, %s\n" %(type(e), e)
       print "Will try again"
-      #pass
 
 # ------------------------------------------------------------------------------    
 # Called when an incoming message is received. 
@@ -22,16 +21,17 @@ def start_board():
 def board(ip, port, sockobj, thiscommhandle, listencommhandle):
   try:
     msgheader = sockobj.recv(1024) # Receive message
-    # React depending on message type: HTTP GET, or POST, or VESSELDATA,
+    # React depending on message type: GET, POST, VESSELDATA, ELECTIONMESSAGE, 
+    # ELECTIONRESULT, PERMISSIONDENIED, PERMISSIONGRANTED, ACQUIRE, RELEASE
     # or some other type of communication.
     if msgheader.startswith( 'GET' ):
-      send_html(sockobj)
+      generate_and_send_html_page(sockobj)
       stopcomm(thiscommhandle)   
 
     elif msgheader.startswith( 'POST' ):
-      print "Vessel IP: %s Port: %s " %(mycontext['ip'], mycontext['port'])
-      print "got POST:\n", msgheader
-      send_html(sockobj)
+      #print("Vessel IP: %s Port: %s " %(mycontext['ip'], mycontext['port']))
+      print "got POST %s" %(msgheader)
+      generate_and_send_html_page(sockobj)
       stopcomm(thiscommhandle)
       
       mycontext['lock'].acquire(True)
@@ -39,46 +39,49 @@ def board(ip, port, sockobj, thiscommhandle, listencommhandle):
       
       newentry = msgheader[msgheader.find('comment=')+8:] + '<br>'
       mycontext['entry'] = newentry + mycontext['entry']
-      print("my current context" + mycontext['entry'])
+      print "my current context" + mycontext['entry']
       send_vessel_data(newentry)
       
       release_distributed_lock()
       mycontext['lock'].release()  
    
     elif msgheader.startswith( 'VESSELDATA' ):
-      print "got VESSELDATA from IP:%s Port:%s got:%s" %(mycontext['ip'], mycontext['port'], msgheader)
+      print "got VESSELDATA from IP:%s got:%s" %(ip, msgheader)
       stopcomm(thiscommhandle)
       mycontext['entry'] = msgheader[msgheader.find('comment=')+8:] + mycontext['entry']
 
     elif msgheader.startswith( 'ELECTIONMESSAGE' ):
-      print "got ELECTIONMESSAGE from IP:%s Port:%s \n%s\n" %(ip, str(port), msgheader)
+      print "got ELECTIONMESSAGE from IP:%s\n%s\n" %(ip, msgheader)
       stopcomm(thiscommhandle)
       electionmessage = msgheader[msgheader.find('comment=')+8:]
       firstvesselid = electionmessage[:electionmessage.find('+')]
       
       # Check if election message was sent by me, if so send election result.
+      # Or if election message has more id:s then existing vessels, then destroy 
+      # message because vessel that started election has crashed.
       # Otherwise append my id to election message and send to next vessel.
       if firstvesselid == mycontext['myuniqueid']:
         send_election_result(electionmessage)
+      elif msgheader.count('+') >= len(mycontext['vessels']):
+        return
       else:
         send_election_message(find_neighbour_vessel(), 
           msgheader + mycontext['myuniqueid'] + '+')
         
     elif msgheader.startswith( 'ELECTIONRESULT' ):
-      print "got ELECTIONRESULT from from IP:%s Port:%s \n%s\n" %(ip, str(port), msgheader)
+      print "got ELECTIONRESULT from IP:%s\n%s\n" %(ip, msgheader)
       stopcomm(thiscommhandle)
 
       electionresult = msgheader[msgheader.find('comment=')+8:]
       
-      # Finds the corresponding id with ip & port and set the current leader.
+      # Finds the corresponding id with ip & port and set the current leader
       index = find_vessel_with_id(electionresult)
       mycontext['currentleader'] = (mycontext['vessels'][index][0], 
         mycontext['vessels'][index][1])
-      print("Assigned leader, IP: " +  mycontext['currentleader'][0] + " Port: " + str(mycontext['currentleader'][1]) + "\n")
+      print "Assigned leader, IP: " +  mycontext['currentleader'][0] + " Port: " + str(mycontext['currentleader'][1]) + "\n"
 
-      # If we sent the election result, exit thread.
+      # If we sent the election result, exit thread
       if msgheader[msgheader.find('sender=')+7:msgheader.find('\ncomment=')] == mycontext['myuniqueid']:
-        print("Entered returned")
         return
 
       send_election_message(find_neighbour_vessel(), msgheader)
@@ -92,24 +95,25 @@ def board(ip, port, sockobj, thiscommhandle, listencommhandle):
       stopcomm(thiscommhandle)
       mycontext['distributedaccess'] = True
     elif msgheader.startswith( 'ACQUIRE' ):
-      print "got ACQUIRE request from IP:%s Port:%s \n" %(ip, str(port))
+      print "got ACQUIRE request from IP:%s\n" %(ip)
       stopcomm(thiscommhandle) 
       vesselid = msgheader[msgheader.find('comment=')+8:]
       mycontext['leaderqueue'].append(vesselid)
-      leaderlockresult = mycontext['leaderlock'].acquire()
+      leaderlockresult = mycontext['leaderlock'].acquire(False)
+      print "leader lock result = " + str(leaderlockresult)
 
       index = find_vessel_with_id(vesselid)
       sockobjVessel = openconn(mycontext['vessels'][index][0], mycontext['vessels'][index][1])
       if leaderlockresult:
-        print("Sending permission granted\n")   
-        sockobjVessel.send("PERMISSIONGRANTED\n")          
+        print "Sending permission granted\n"
+        sockobjVessel.send("PERMISSIONGRANTED\n")
       else:
-        print("Sending permission denied\n")
+        print "Sending permission denied\n"
         sockobjVessel.send("PERMISSIONDENIED\n")
       sockobjVessel.close()
 
     elif msgheader.startswith( 'RELEASE' ):
-      print "got RELEASE from IP:%s Port:%s \n" %(ip, str(port))
+      print "got RELEASE from IP:%s \n" %(ip)
       mycontext['leaderqueue'].pop(0)
       if len(mycontext['leaderqueue']) > 0:
         index = find_vessel_with_id(mycontext['leaderqueue'][0])
@@ -124,7 +128,6 @@ def board(ip, port, sockobj, thiscommhandle, listencommhandle):
       stopcomm(thiscommhandle)
   except Exception, e:
     print "Exception in board: %s, %s\n" %(type(e), e)
-    #pass
 
 # ------------------------------------------------------------------------------
 # Sends new entry to all other vessels 
@@ -142,49 +145,49 @@ def send_vessel_data(entry):
   return
 
 # ------------------------------------------------------------------------------
-# Sends new html page to client 
+# Generates the html page and sends it to client
+# Optional parameters are message and error which are introduced as headers into the html.
 # ------------------------------------------------------------------------------   
-def send_html(sockobj):
-  htmlresponse = generate_html_page()
+def generate_and_send_html_page(sockobj, status=""):
+  # Sets blackboard, title, leader and status content
+  content = '<div class="entry">%s</div>' %( mycontext['entry'] )
+  board_title = '<div id="boardtitle_placeholder" class="boardtitle">Board contents at host: %s:%u, up time: %u sec.</div>' %(mycontext['ip'], mycontext['port'], int(getruntime()))  
+  leader = '<div class="leader">Current leader IP: %s Port: %s</div>' %( mycontext['currentleader'][0], mycontext['currentleader'][1] )
+  status_message = "<div class='status'>%s</div>" % (status)
+
+  # Merging the contents of the blackboard, the title and the leader within a placeholder
+  content = '<div id="boardcontents_placeholder">%s%s%s</div>' %(leader, board_title, content)   
+
+  # Merging the htmlfiles, status and blackboard content.
+  content = "".join([mycontext['headerhtml'], status_message, content, mycontext['footerhtml']])
+
   sockobj.send("HTTP/1.1 200 OK\r\nContent-type: text/html\r\n" + \
-  "Content-length: %i\r\n\r\n%s" % (len(htmlresponse), htmlresponse))
+  "Content-length: %i\r\n\r\n%s" % (len(content), content))
   return
 
 # ------------------------------------------------------------------------------
-# Outputs the blackboard html 
-# Optional parameters are message and error which are introduced as headers into the html.
-# ------------------------------------------------------------------------------   
-def generate_html_page(status=""):
-  #Initialize blackboard content
-  content = '<div class="entry">%s</div>' %( mycontext['entry'] )
-  
-  # dynamic title showing Ip address, port and up time.
-  board_title = '<div id="boardtitle_placeholder" class="boardtitle">Board contents at host: %s:%u, up time: %u sec.</div>' %(mycontext['ip'], mycontext['port'], int(getruntime()))  
-
-  leader = '<div class="leader">Current leader IP: %s Port: %s</div>' %( mycontext['currentleader'][0], mycontext['currentleader'][1] )
-
-  # merging the contents of the board with the title
-  # and wrapping all with <div id="boardcontents_placeholder”>...</div>
-  content = '<div id="boardcontents_placeholder">%s%s%s</div>' %(leader, board_title, content)   
-
-  status_message = "<div class='status'>%s</div>" % (status)
-  content = "".join([mycontext['headerhtml'], status_message, content, mycontext['footerhtml']])
-
-  return content
-
+# Finds the corresponding vessel index for a vesselid 
+# ------------------------------------------------------------------------------ 
 def find_vessel_with_id(vesselid):
   index = 0
   while vesselid != mycontext['vessels'][index][0].replace('.', '') + str(mycontext['vessels'][index][1]):
     index += 1
   return index
 
+# ------------------------------------------------------------------------------
+# Starts a leader election 
+# ------------------------------------------------------------------------------ 
 def start_elect_leader():
-  print("Staring Election\n")
+  print "Staring Election\n"
   mycontext['leaderelectionrunning'] = True 
   send_election_message(find_neighbour_vessel(), 
     "ELECTIONMESSAGE\ncomment=" + mycontext['myuniqueid'] + '+') 
   return
 
+# ------------------------------------------------------------------------------
+# Sends a message to the next vessel in a ring fashion. 
+# If next vessel is offline, sends to next in ring. 
+# ------------------------------------------------------------------------------ 
 def send_election_message(index, message):
   try:
     (vesselip, vesselport) = mycontext['vessels'][index]
@@ -192,13 +195,21 @@ def send_election_message(index, message):
     sockobjVessel.send(message)
     sockobjVessel.close()
   except Exception, e:
-    send_election_message(index + 1, message)
+    index += 1
+    if len(mycontext['vessels']) <= index:
+      index = 0
+    print "Sending to next vessel, closes neighbour was dead"
+    send_election_message(index, message)
   return
 
+# ------------------------------------------------------------------------------
+# Generates and sends the first election result message the next vessel. 
+# Only the vessel which started the election calls this function.
+# ------------------------------------------------------------------------------ 
 def send_election_result(message):
   largestid = 0
-  activevessels = message.split('+')
-  activevessels = activevessels[:-1]
+  activevessels = message.split('+')[:-1]
+  #activevessels = activevessels[:-1]
 
   for vessel in activevessels:
     if largestid < int(vessel):
@@ -210,16 +221,21 @@ def send_election_result(message):
   mycontext['leaderelectionrunning'] = False 
   return
 
+# ------------------------------------------------------------------------------
+# Finds the next alive neighbour vessel in a ring fashion 
+# ------------------------------------------------------------------------------ 
 def find_neighbour_vessel():
-  # Finds the next vessel in ring
   index = 0
   while (mycontext['ip'], mycontext['port']) != mycontext['vessels'][index]:
     index += 1
   index += 1
-  if len(mycontext['vessels']) >= index:
+  if len(mycontext['vessels']) <= index:
     index = 0
   return index
 
+# ------------------------------------------------------------------------------
+# Acquires the distributed lock. Blocks until the lock is acquired.
+# ------------------------------------------------------------------------------ 
 def acquire_distributed_lock():
   sockobjVessel = openconn(mycontext['currentleader'][0], mycontext['currentleader'][1])
   sockobjVessel.send("ACQUIRE\ncomment=" + mycontext['myuniqueid'])
@@ -230,10 +246,14 @@ def acquire_distributed_lock():
     sleep(0.01)
   return
 
+# ------------------------------------------------------------------------------
+# Releases the distributed lock 
+# ------------------------------------------------------------------------------ 
 def release_distributed_lock():
   sockobjVessel = openconn(mycontext['currentleader'][0], mycontext['currentleader'][1])
   sockobjVessel.send("RELEASE\n")
-  sockobjVessel.close()  
+  sockobjVessel.close()
+  mycontext['distributedaccess'] = False
   return
 
 # ------------------------------------------------------------------------------    
@@ -274,5 +294,6 @@ if callfunc == 'initialize':
   mycontext['headerhtml'] = file("header.html").read()
   mycontext['footerhtml'] = file("footer.html").read()
 
-  settimer(0, start_elect_leader, ())
+  # Waits 1 sec so vessels have time to start_board
+  settimer(1, start_elect_leader, ())
   start_board()
