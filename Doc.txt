@@ -1,4 +1,11 @@
+-----------------------------------------------------------------------
+-- What main.py supports
+-----------------------------------------------------------------------
 
+
+-----------------------------------------------------------------------
+-- Methods
+-----------------------------------------------------------------------
 Starts the board and listens for connetions until the program is closed.
 start_board()
     Purpose:
@@ -64,30 +71,15 @@ send_vessel_data(entry)
     Returns:
         None.
 
-Sends the newly generated html response to the client.
-send_html(sockobj)
+
+Generates and sends the html page to the client which the sockobj is connected to.
+generate_and_send_html_page(sockobj, status="")
     Purpose:
-        Send a html response to client.
+        Generate and send the html page to the client.
 
     Arguments:
         sockobj:
-            Socket object for the connection to the client
-
-    Exceptions:
-        None.
-
-    Side Effects:
-        None.
-
-    Returns:
-        None.
-
-Generates a html page for a client.
-generate_html_page(status)
-    Purpose:
-        Generate a html page.
-
-    Arguments:
+            The socket which the html page should be sent to
         status:
             Used for optional status message
 
@@ -98,5 +90,5 @@ generate_html_page(status)
         None.
 
     Returns:
-        A string representing the html page.
+        None.
 
