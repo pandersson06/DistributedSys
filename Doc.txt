@@ -1,0 +1,102 @@
+
+Starts the board and listens for connetions until the program is closed.
+start_board()
+    Purpose:
+        Starts the connection listener.
+
+    Arguments:
+        None.
+
+    Exceptions:
+        None.
+
+    Side Effects:
+        Starts a handler that listens for connections.
+
+    Returns:
+        None.
+
+Board handles messages that are received from a waitforconn function. 
+board(ip, port, sockobj, thiscommhandle, listencommhandle)
+    Purpose:
+        Handle an incomming message.
+
+    Arguments:
+        ip:
+            Remote ip
+
+        port:
+            Remote port
+
+        sockobj:
+            The socket for the connection
+
+        thiscommhandle:
+            The comm handler for this connection
+
+        listencommhandle:
+            The comm handler for the listener
+
+    Exceptions:
+        None.
+
+    Side Effects:
+        May sends messages over the network.
+
+    Returns:
+        None.
+
+Sends the new blackboard entry to all other vessels.
+send_vessel_data(entry)
+    Purpose:
+        Sends the new entry to all other vessels that are within mycontext['vessels'].
+
+    Arguments:
+        entry:
+            The blackboard entry which will be sent to the other vessels
+
+    Exceptions:
+        None.
+
+    Side Effects:
+        Starts connections to several vessels.
+
+    Returns:
+        None.
+
+Sends the newly generated html response to the client.
+send_html(sockobj)
+    Purpose:
+        Send a html response to client.
+
+    Arguments:
+        sockobj:
+            Socket object for the connection to the client
+
+    Exceptions:
+        None.
+
+    Side Effects:
+        None.
+
+    Returns:
+        None.
+
+Generates a html page for a client.
+generate_html_page(status)
+    Purpose:
+        Generate a html page.
+
+    Arguments:
+        status:
+            Used for optional status message
+
+    Exceptions:
+        None.
+
+    Side Effects:
+        None.
+
+    Returns:
+        A string representing the html page.
+
