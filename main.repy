@@ -3,7 +3,7 @@
 
 # ------------------------------------------------------------------------------   
 # Start listening and handle incoming connections in board() function
-# ------------------------------------------------------------------------------   
+# ------------------------------------------------------------------------------  
 def start_board():
   ip = mycontext['ip']
   port = mycontext['port']
@@ -30,17 +30,24 @@ def board(ip, port, sockobj, thiscommhandle, listencommhandle):
     elif msgheader.startswith( 'POST' ):
       print "Vessel IP: %s Port: %s " %(mycontext['ip'], mycontext['port'])
       print "got POST:\n", msgheader
-      newentry = msgheader[msgheader.find('comment=')+8:] + '<br>'
-      mycontext['entry'] = newentry + mycontext['entry']
-
       send_html(sockobj)
       stopcomm(thiscommhandle)
-
+      
+      mycontext['lock'].acquire(blocking=1)
+      newentry = msgheader[msgheader.find('comment=')+8:] + '<br>'
+      mycontext['entry'] = newentry + mycontext['entry']
       send_vessel_data(newentry)
+      mycontext['lock'].release()
+      
     elif msgheader.startswith( 'VESSELDATA' ):
       print "Vessel IP:%s Port:%s got:%s" %(mycontext['ip'], mycontext['port'], msgheader)
       mycontext['entry'] = msgheader[msgheader.find('comment=')+8:] + mycontext['entry']
       stopcomm(thiscommhandle)
+    elif msgheader.startswith( 'ELECTIONMESSAGE' ):
+      print "got ELECTIONMESSAGE"
+      electionmessage = msgheader[msgheader.find('comment=')+8:]
+      firstVesselId = electionmessage[:electionmessage.find(' ')]
+      ##CONTINUES HERE
     else:
       print "got something:\n", msgheader
       stopcomm(thiscommhandle)
@@ -97,6 +104,34 @@ def generate_html_page(status=""):
   content = "".join([mycontext['headerhtml'], status_message, content, mycontext['footerhtml']])
 
   return content
+
+def start_elect_leader():
+  print("electing")
+  mycontext['leaderelectionrunning'] = True 
+  send_election_message(find_neighbour_vessel(), "electionmessage\ncomment=" + mycontext['myuniqueid']) 
+  return
+
+def send_election_message(index, message):
+  try:
+    (vesselip, vesselport) = mycontext['vessels'][index]
+    sockobjVessel = openconn(vesselip, vesselport)
+    # Always append myunqieid to electionmessage. 
+    # Election message may contain duplicates if several elections are ongoing
+    sockobjVessel.send(message)
+    sockobjVessel.close()
+  except Exception, e:
+    send_election_message(index + 1)
+  return
+
+def find_neighbour_vessel():
+  # Finds the next vessel in ring
+  index = 0
+  while (mycontext['ip'], mycontext['port']) != mycontext['vessels'][index]:
+    index += 1
+  index += 1
+  if len(mycontext['vessels']) >= index:
+    index = 0
+  return index
   
 # ------------------------------------------------------------------------------    
 # Main entry point of the program. Initalizes global variables in mycontext
@@ -125,8 +160,14 @@ if callfunc == 'initialize':
   mycontext['port'] = port
   mycontext['ip'] = ip
   mycontext['vessels'] = [('127.0.0.1', 63100), ('127.0.0.1', 63101)]
-  mycontext['entry'] = ""
+  mycontext['entry'] = ''
+  mycontext['lock'] = getlock()
+  mycontext['leaderelectionrunning'] = True
+  mycontext['currentleader'] = ''
+  #mycontext['electionmessage'] = "electionmessage\ncomment="
+  mycontext['myuniqueid'] = ip.replace('.', '') + str(port)
   mycontext['headerhtml'] = file("header.html").read()
   mycontext['footerhtml'] = file("footer.html").read()
 
+  settimer(0, start_elect_leader, ())
   start_board()
