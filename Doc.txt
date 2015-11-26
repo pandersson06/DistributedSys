@@ -3,14 +3,16 @@
 -----------------------------------------------------------------------
 * A system for a distributed blackboard.
 * Uses a centralized lock to ensure the boards displays exactly the same content
-  in the same order. The vessel who gets the lock is responsible for sending the
-  new blackboard entry to all other vessels.
+  in the same order.
 * Uses ip concatinated with the port number as a unique integer identifier for 
   each vessel. The highest identifier becomes the leader.
 * Can elect a leader among the living vessels. If the leader dies a new leader is elected.
 * Can handle the case where the vessel which started the election dies.
 
-* Can NOT handle the case where the slave vessel which has the lock dies.
+* Leader algorithm cost: 2n, n = nr of vessels, One n is the election message, 
+  Other n is the election result message. 
+* Blackboard cost: 1 + (n-1), n = nr of vessels, (n-1) leader send entry to all 
+  boards, 1 is slave vessel sending new entry to leader.
 
 -----------------------------------------------------------------------
 -- Functions
@@ -39,10 +41,6 @@ handle these types of messages:
   VESSELDATA - Blackboard data from other vessels
   ELECTIONMESSAGE - Election message containing alive vessels in the ring. 
   ELECTIONRESULT - The result from the election
-  PERMISSIONDENIED - Permission denied message from leader
-  PERMISSIONACQUIRE - Permission granted message from leader
-  ACQUIRE - Acquire message to the leader from a slave vessel
-  RELEASE - Release message from salve vessel to leader 
 board(ip, port, sockobj, thiscommhandle, listencommhandle)
   Purpose:
     Handle an incomming message.
@@ -208,40 +206,3 @@ find_neighbour_vessel()
 
   Returns:
     The index of the neighbour.
-    
-    
-Acquires the distributed lock. Blocks until the distributed lock is granted from 
-the leader. If leader dies during acquiring, start a new leader election. 
-acquire_distributed_lock()
-  Purpose:
-    Acquire the distributed lock.
-
-  Arguments:
-    None.
-
-  Exceptions:
-    None.
-
-  Side Effects:
-    Open connections and may block a long time.
-
-  Returns:
-    None.
-
-
-Releases the distributed lock.  
-release_distributed_lock()
-  Purpose:
-    Release distributed lock.
-
-  Arguments:
-    None.
-
-  Exceptions:
-    None.
-
-  Side Effects:
-    Opens a connection.
-
-  Returns:
-    None.
