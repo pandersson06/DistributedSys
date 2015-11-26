@@ -1,94 +1,247 @@
 -----------------------------------------------------------------------
--- What main.py supports
+-- Features and overview
 -----------------------------------------------------------------------
+* A system for a distributed blackboard.
+* Uses a centralized lock to ensure the boards displays exactly the same content
+  in the same order. The vessel who gets the lock is responsible for sending the
+  new blackboard entry to all other vessels.
+* Uses ip concatinated with the port number as a unique integer identifier for 
+  each vessel. The highest identifier becomes the leader.
+* Can elect a leader among the living vessels. If the leader dies a new leader is elected.
+* Can handle the case where the vessel which started the election dies.
 
+* Can NOT handle the case where the slave vessel which has the lock dies.
 
 -----------------------------------------------------------------------
--- Methods
+-- Functions
 -----------------------------------------------------------------------
 Starts the board and listens for connetions until the program is closed.
 start_board()
-    Purpose:
-        Starts the connection listener.
+  Purpose:
+    Starts the connection listener.
 
-    Arguments:
-        None.
+  Arguments:
+    None.
 
-    Exceptions:
-        None.
+  Exceptions:
+    None.
 
-    Side Effects:
-        Starts a handler that listens for connections.
+  Side Effects:
+    Starts a handler that listens for connections.
 
-    Returns:
-        None.
+  Returns:
+    None.
 
-Board handles messages that are received from a waitforconn function. 
+Board handles messages that are received from a waitforconn function. It can
+handle these types of messages:
+  GET - HTML request from web client
+  POST - Client posts new data to blackboard, Acquires local and distributed lock.
+  VESSELDATA - Blackboard data from other vessels
+  ELECTIONMESSAGE - Election message containing alive vessels in the ring. 
+  ELECTIONRESULT - The result from the election
+  PERMISSIONDENIED - Permission denied message from leader
+  PERMISSIONACQUIRE - Permission granted message from leader
+  ACQUIRE - Acquire message to the leader from a slave vessel
+  RELEASE - Release message from salve vessel to leader 
 board(ip, port, sockobj, thiscommhandle, listencommhandle)
-    Purpose:
-        Handle an incomming message.
+  Purpose:
+    Handle an incomming message.
 
-    Arguments:
-        ip:
-            Remote ip
+  Arguments:
+    ip:
+      Remote ip
 
-        port:
-            Remote port
+    port:
+      Remote port
 
-        sockobj:
-            The socket for the connection
+    sockobj:
+      The socket for the connection
 
-        thiscommhandle:
-            The comm handler for this connection
+    thiscommhandle:
+      The comm handler for this connection
 
-        listencommhandle:
-            The comm handler for the listener
+    listencommhandle:
+      The comm handler for the listener
 
-    Exceptions:
-        None.
+  Exceptions:
+    None.
 
-    Side Effects:
-        May sends messages over the network.
+  Side Effects:
+    May sends messages over the network.
 
-    Returns:
-        None.
+  Returns:
+    None.
 
 Sends the new blackboard entry to all other vessels.
 send_vessel_data(entry)
-    Purpose:
-        Sends the new entry to all other vessels that are within mycontext['vessels'].
+  Purpose:
+    Sends the new entry to all other vessels that are within mycontext['vessels'].
 
-    Arguments:
-        entry:
-            The blackboard entry which will be sent to the other vessels
+  Arguments:
+    entry:
+      The blackboard entry which will be sent to the other vessels
 
-    Exceptions:
-        None.
+  Exceptions:
+    None.
 
-    Side Effects:
-        Starts connections to several vessels.
+  Side Effects:
+    Starts connections to several vessels.
 
-    Returns:
-        None.
+  Returns:
+    None.
 
 
 Generates and sends the html page to the client which the sockobj is connected to.
 generate_and_send_html_page(sockobj, status="")
-    Purpose:
-        Generate and send the html page to the client.
+  Purpose:
+    Generate and send the html page to the client.
 
-    Arguments:
-        sockobj:
-            The socket which the html page should be sent to
-        status:
-            Used for optional status message
+  Arguments:
+    sockobj:
+      The socket which the html page should be sent to
+    status:
+      Used for optional status message
 
-    Exceptions:
-        None.
+  Exceptions:
+    None.
 
-    Side Effects:
-        None.
+  Side Effects:
+    None.
 
-    Returns:
-        None.
+  Returns:
+    None.
 
+Finds the array vessel index for a certain vessel id.
+find_vessel_with_id(vesselid)
+  Purpose:
+    Find the index of a vessel id.
+
+  Arguments:
+    vesselid:
+      The id of a vessel
+
+  Exceptions:
+    None.
+
+  Side Effects:
+    None.
+
+  Returns:
+    Index of vessel within vessels array.
+
+     
+Starts a new leader election.
+start_elect_leader()
+  Purpose:
+    To elect a new leader.
+
+  Arguments:
+    None.
+
+  Exceptions:
+    None.
+
+  Side Effects:
+    Start connection to vessel
+
+  Returns:
+    None.
+
+    
+Sends an election message to the next neighbour. If next neighbour is dead, send
+to next neighbour in the ring.
+send_election_message()
+  Purpose:
+    Send election message
+
+  Arguments:
+    index:
+      The index of the next neighbour
+    
+    message:
+      The message which should be sent with the election message
+
+  Exceptions:
+    None.
+
+  Side Effects:
+    Start connection to vessel
+
+  Returns:
+    None.
+    
+
+Calculates and sends the election result to the next neighbour. 
+If next neighbour is dead, send to next neighbour in the ring.
+send_election_result()
+  Purpose:
+    Calculate and send election result
+
+  Arguments:
+    message:
+      All active vessels in the ring
+
+  Exceptions:
+    None.
+
+  Side Effects:
+    Start connection to vessel
+
+  Returns:
+    None.
+    
+
+Find the local vessel index within the vessels array and finds the neighbour
+vessel in a ring fashion.
+find_neighbour_vessel()
+  Purpose:
+    Find the neighbour.
+
+  Arguments:
+    None.
+
+  Exceptions:
+    None.
+
+  Side Effects:
+    None.
+
+  Returns:
+    The index of the neighbour.
+    
+    
+Acquires the distributed lock. Blocks until the distributed lock is granted from 
+the leader. If leader dies during acquiring, start a new leader election. 
+acquire_distributed_lock()
+  Purpose:
+    Acquire the distributed lock.
+
+  Arguments:
+    None.
+
+  Exceptions:
+    None.
+
+  Side Effects:
+    Open connections and may block a long time.
+
+  Returns:
+    None.
+
+
+Releases the distributed lock.  
+release_distributed_lock()
+  Purpose:
+    Release distributed lock.
+
+  Arguments:
+    None.
+
+  Exceptions:
+    None.
+
+  Side Effects:
+    Opens a connection.
+
+  Returns:
+    None.
