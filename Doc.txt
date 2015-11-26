@@ -9,8 +9,9 @@
 * Can elect a leader among the living vessels. If the leader dies a new leader is elected.
 * Can handle the case where the vessel which started the election dies.
 
-* Leader algorithm cost: 2n, n = nr of vessels, One n is the election message, 
-  Other n is the election result message. 
+* Leader algorithm cost: 2n, n = nr of vessels, One n is for the election message that is 
+  sent from node to node through the ring. The other n is for the election result message 
+  to be sent through the ring in the same way. 
 * Blackboard cost: 1 + (n-1), n = nr of vessels, (n-1) leader send entry to all 
   boards, 1 is slave vessel sending new entry to leader.
 
