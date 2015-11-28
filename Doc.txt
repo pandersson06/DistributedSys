@@ -1,19 +1,7 @@
 -----------------------------------------------------------------------
 -- Features and overview
 -----------------------------------------------------------------------
-* A system for a distributed blackboard.
-* Uses a centralized lock to ensure the boards displays exactly the same content
-  in the same order.
-* Uses ip concatinated with the port number as a unique integer identifier for 
-  each vessel. The highest identifier becomes the leader.
-* Can elect a leader among the living vessels. If the leader dies a new leader is elected.
-* Can handle the case where the vessel which started the election dies.
 
-* Leader algorithm cost: 2n, n = nr of vessels, One n is for the election message that is 
-  sent from node to node through the ring. The other n is for the election result message 
-  to be sent through the ring in the same way. 
-* Blackboard cost: 1 + (n-1), n = nr of vessels, (n-1) leader send entry to all 
-  boards, 1 is slave vessel sending new entry to leader.
 
 -----------------------------------------------------------------------
 -- Functions
@@ -40,8 +28,6 @@ handle these types of messages:
   GET - HTML request from web client
   POST - Client posts new data to blackboard, Acquires local and distributed lock.
   VESSELDATA - Blackboard data from other vessels
-  ELECTIONMESSAGE - Election message containing alive vessels in the ring. 
-  ELECTIONRESULT - The result from the election
 board(ip, port, sockobj, thiscommhandle, listencommhandle)
   Purpose:
     Handle an incomming message.
@@ -128,82 +114,3 @@ find_vessel_with_id(vesselid)
   Returns:
     Index of vessel within vessels array.
 
-     
-Starts a new leader election.
-start_elect_leader()
-  Purpose:
-    To elect a new leader.
-
-  Arguments:
-    None.
-
-  Exceptions:
-    None.
-
-  Side Effects:
-    Start connection to vessel
-
-  Returns:
-    None.
-
-    
-Sends an election message to the next neighbour. If next neighbour is dead, send
-to next neighbour in the ring.
-send_election_message()
-  Purpose:
-    Send election message
-
-  Arguments:
-    index:
-      The index of the next neighbour
-    
-    message:
-      The message which should be sent with the election message
-
-  Exceptions:
-    None.
-
-  Side Effects:
-    Start connection to vessel
-
-  Returns:
-    None.
-    
-
-Calculates and sends the election result to the next neighbour. 
-If next neighbour is dead, send to next neighbour in the ring.
-send_election_result()
-  Purpose:
-    Calculate and send election result
-
-  Arguments:
-    message:
-      All active vessels in the ring
-
-  Exceptions:
-    None.
-
-  Side Effects:
-    Start connection to vessel
-
-  Returns:
-    None.
-    
-
-Find the local vessel index within the vessels array and finds the neighbour
-vessel in a ring fashion.
-find_neighbour_vessel()
-  Purpose:
-    Find the neighbour.
-
-  Arguments:
-    None.
-
-  Exceptions:
-    None.
-
-  Side Effects:
-    None.
-
-  Returns:
-    The index of the neighbour.
