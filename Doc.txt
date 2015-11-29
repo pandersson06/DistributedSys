@@ -96,14 +96,14 @@ generate_and_send_html_page(sockobj, status="")
   Returns:
     None.
 
-Finds the array vessel index for a certain vessel id.
-find_vessel_with_id(vesselid)
+Inserts the new message entry in the correct position within the entry list.
+insert_entry(msg)
   Purpose:
-    Find the index of a vessel id.
+    Insert message in entry list.
 
   Arguments:
-    vesselid:
-      The id of a vessel
+    msg:
+      The new entry, is a tuple (Blackboard Entry, Logic Clock, Ip, Port)
 
   Exceptions:
     None.
@@ -112,5 +112,5 @@ find_vessel_with_id(vesselid)
     None.
 
   Returns:
-    Index of vessel within vessels array.
+    None.
 

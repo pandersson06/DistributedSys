@@ -27,19 +27,41 @@ def board(ip, port, sockobj, thiscommhandle, listencommhandle):
 
     elif msgheader.startswith( 'POST' ):
       print "got POST %s" %(msgheader)
-      newEntry =  msgheader[msgheader.find('comment=')+8:] + '<br>'
-      mycontext['entry'] = newEntry + mycontext['entry']
+      newEntry =  msgheader[msgheader.find('comment=')+8:]
+      mycontext['lock'].acquire(True)
+      mycontext['logicclock'] += 1
+      tmpclock = mycontext['logicclock']
+      mycontext['entry'].append((newEntry, mycontext['logicclock'], int(mycontext['ip'].replace('.', '')), mycontext['port'] ))
+      mycontext['lock'].release()
+
       generate_and_send_html_page(sockobj)
       stopcomm(thiscommhandle)
       
-      mycontext['lock'].acquire(True)
-      send_vessel_data(newEntry)
-      mycontext['lock'].release()  
+      send_vessel_data(newEntry, tmpclock) 
    
     elif msgheader.startswith( 'VESSELDATA' ):
       print "got VESSELDATA from IP:%s got:%s" %(ip, msgheader)
-      stopcomm(thiscommhandle)      
-      mycontext['entry'] = msgheader[msgheader.find('comment=')+8:] + mycontext['entry']
+      stopcomm(thiscommhandle)
+
+      # First element entry, second element logic clock, third elemet ip and fourth element port
+      # Converts some string elements to int
+      msg = msgheader[msgheader.find('comment=')+8:].split('+')
+      msg[1] = int(msg[1])
+      msg.insert(2, int(ip.replace('.', '')))
+      msg[3] = int(msg[3])  
+
+      # Acquires lock and updates logic clock
+      mycontext['lock'].acquire(True)
+      mycontext['logicclock'] = max(mycontext['logicclock'], msg[1])
+
+      # Inserts the new entry
+      print 'Want to insert ' + str(msg[0]) + " " + str(msg[1]) + " " + str(msg[2]) + " " + str(msg[3])
+      insert_entry(msg)
+      print 'After inserting'
+      for elem in mycontext['entry']:
+        print elem[0] + " " + str(elem[1]) + " " + str(elem[2]) + " " + str(elem[3])
+        
+      mycontext['lock'].release()
 
     else:
       print "got something:\n", msgheader
@@ -48,14 +70,39 @@ def board(ip, port, sockobj, thiscommhandle, listencommhandle):
     print "Exception in board: %s, %s\n" %(type(e), e)
 
 # ------------------------------------------------------------------------------
+# Inserts the new entry at correct location
+# entry[1] and msg[1] is the Logic Clock
+# entry[2] and msg[2] is the IP
+# entry[3] and msg[3] is the Port
+# ------------------------------------------------------------------------------ 
+def insert_entry(msg):
+  index = len(mycontext['entry'])-1
+  while True:
+    # Checks if msg should be inserted first in entry list
+    if index == -1:
+      mycontext['entry'].insert(0, (msg[0], msg[1], msg[2], msg[3]))
+      print "Inserted at first index with data: %s %s %s %s\n" %(msg[0], msg[1], msg[2], msg[3]) # TODO rm
+      return
+
+    # Checks if msg should be inserted at index
+    entry = mycontext['entry'][index]
+    if (entry[1] < msg[1] or # If Logic Clock is larger
+        (entry[1] == msg[1] and entry[2] < msg[2]) or # If IP is larger
+        (entry[1] == msg[1] and entry[2] == msg[2] and entry[3] < msg[3])): # If Port is larger
+      mycontext['entry'].insert(index+1, (msg[0], msg[1], msg[2], msg[3]))
+      print "Inserted at %s index with data: %s %s %s %s\n" %(index+1, msg[0], msg[1], msg[2], msg[3]) # TODO RM
+      return
+    index -= 1
+
+# ------------------------------------------------------------------------------
 # Sends new entry to all other vessels 
 # ------------------------------------------------------------------------------   
-def send_vessel_data(entry):
+def send_vessel_data(entry, logicclock):
   for (vesselip, vesselport) in mycontext['vessels']:
     if vesselip != mycontext['ip'] or vesselport != mycontext['port']:
       try:
         sockobjVessel = openconn(vesselip, vesselport)
-        bytesent = sockobjVessel.send('VESSELDATA\ncomment=' + entry)
+        bytesent = sockobjVessel.send('VESSELDATA\ncomment=' + entry + '+' + str(logicclock) + '+' + str(mycontext['port']))
         sockobjVessel.close()
       except Exception, e:
         print "Exception in send_vessel_data: %s, %s\n" %(type(e), e)
@@ -68,7 +115,10 @@ def send_vessel_data(entry):
 # ------------------------------------------------------------------------------   
 def generate_and_send_html_page(sockobj, status=""):
   # Sets blackboard, title, and status content
-  content = '<div class="entry">%s</div>' %( mycontext['entry'] )
+  content = '<div class="entry">'
+  for (entry, clock, ip, port) in mycontext['entry'][::-1]:
+    content += entry + '<br>'
+  content += '</div>'
   board_title = '<div id="boardtitle_placeholder" class="boardtitle">Board contents at host: %s:%u, up time: %u sec.</div>' %(mycontext['ip'], mycontext['port'], int(getruntime()))
   status_message = "<div class='status'>%s</div>" % (status)
 
@@ -82,15 +132,6 @@ def generate_and_send_html_page(sockobj, status=""):
   sockobj.send("HTTP/1.1 200 OK\r\nContent-type: text/html\r\n" + \
   "Content-length: %i\r\n\r\n%s" % (len(content), content))
   return
-
-# ------------------------------------------------------------------------------
-# Finds the corresponding vessel index for a vesselid 
-# ------------------------------------------------------------------------------ 
-def find_vessel_with_id(vesselid):
-  index = 0
-  while vesselid != mycontext['vessels'][index][0].replace('.', '') + str(mycontext['vessels'][index][1]):
-    index += 1
-  return index
 
 # ------------------------------------------------------------------------------    
 # Main entry point of the program. Initalizes global variables in mycontext
@@ -116,12 +157,13 @@ if callfunc == 'initialize':
     raise Exception("Specify a port only for auto detection of IP, or specify IP and port")
 
   # Initialize mycontext
+  # Entry is made of by tuples which is structured like this (Blackboard entry, Logic Clock, Ip, Port)
   mycontext['port'] = port
   mycontext['ip'] = ip
-  mycontext['vessels'] = [('127.0.0.1', 63100), ('127.0.0.1', 63101),  ('127.0.0.1', 63102),  ('127.0.0.1', 63103)]
-  mycontext['entry'] = ''
+  mycontext['vessels'] = [('128.220.231.2', 63163), ('149.43.80.20', 63163), ('203.246.112.148', 63163)]
+  mycontext['entry'] = []
   mycontext['lock'] = getlock()
-  mycontext['myuniqueid'] = ip.replace('.', '') + str(port)
+  mycontext['logicclock'] = 0
   mycontext['headerhtml'] = file("header.html").read()
   mycontext['footerhtml'] = file("footer.html").read()
 
