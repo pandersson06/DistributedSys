@@ -1,9 +1,4 @@
 -----------------------------------------------------------------------
--- Features and overview
------------------------------------------------------------------------
-
-
------------------------------------------------------------------------
 -- Functions
 -----------------------------------------------------------------------
 Starts the board and listens for connetions until the program is closed.
@@ -58,13 +53,15 @@ board(ip, port, sockobj, thiscommhandle, listencommhandle)
     None.
 
 Sends the new blackboard entry to all other vessels.
-send_vessel_data(entry)
+send_vessel_data(entry, logicclock)
   Purpose:
     Sends the new entry to all other vessels that are within mycontext['vessels'].
 
   Arguments:
     entry:
       The blackboard entry which will be sent to the other vessels
+    logicclock:
+      The logic clock which will be sent to the other vessels
 
   Exceptions:
     None.
