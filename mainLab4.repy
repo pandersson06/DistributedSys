@@ -1,0 +1,295 @@
+# Lab 4 helper functions 
+# This skeleton does not handle race conditions/locks
+
+# ------------------------------------------------------------------------------   
+# Start listening and handle incoming connections in board() function
+# ------------------------------------------------------------------------------   
+def start_board():
+  ip = mycontext['ip']
+  port = mycontext['port']
+  print "Listening on IP " + str(ip) +" port " + str(port)
+  try: 
+    listencommhandle = waitforconn(ip,port,board)
+  except Exception as e:
+    print "Exception in start_board: %s, %s\n" %(type(e), e)
+
+# ------------------------------------------------------------------------------    
+# Called when an incoming message is received. 
+# ------------------------------------------------------------------------------    
+def board(ip, port, sockobj, thiscommhandle, listencommhandle):
+  try:
+    msgheader = sockobj.recv(1024) # Receive message
+    
+    # React depending on message type: HTTP GET or POST, or some other type of communication.
+    if msgheader.startswith( 'GET' ):
+      generate_and_send_html_page(sockobj)
+    elif msgheader.startswith( 'POST /Add' ):
+      handle_request_add(msgheader, sockobj, thiscommhandle)
+    elif msgheader.startswith( 'POST /Change' ):
+      handle_request_change(msgheader, sockobj, thiscommhandle)
+    elif msgheader.startswith( 'VESSELDATA' ):
+      handle_request_vesseldata(msgheader, sockobj, thiscommhandle)
+    else:
+      print "Got something else"
+  except Exception as e:
+    print "Exception in board: %s, %s\n" %(type(e), e)
+    
+
+# ------------------------------------------------------------------------------
+# Handles POST \Add request from browser
+# ------------------------------------------------------------------------------
+def handle_request_add(msgheader, sockobj, thiscommhandle):
+  print "Received Add"
+
+  # Finds msgheader data
+  comment=msgheader.split('comment=')[1]
+
+  # Acquire lock and increment logic clock
+  mycontext['lock'].acquire(True)
+  mycontext['clock'] += 1
+  tmpclock = mycontext['clock'] # So we can continue with next POST Add when sending vessel data
+
+  # Mark the entry as Add, and store attributes
+  # We use the HTML query format to store the entries locally
+  # example:
+  # comment=aa&src_clock=2&src_ip=127.0.0.1&src_port=63101&action=Add
+  entry = "comment=%s&src_clock=%u&src_ip=%s&src_port=%u&action=%s" % (comment, mycontext['clock'], mycontext['ip'], mycontext['port'], 'Add')
+  
+  # Modify entries and release lock
+  mycontext['entries'].append(entry)
+  mycontext['lock'].release()
+  
+  # Send the page and vessel data
+  generate_and_send_html_page(sockobj)
+  send_vessel_data(entry, tmpclock) 
+  
+# ------------------------------------------------------------------------------
+# Handles POST /Change request from browser
+# ------------------------------------------------------------------------------
+def handle_request_change(msgheader, sockobj, thiscommhandle):
+  print "Received POST /Change"
+
+  # Extract the query from the HTTP request  
+  query = msgheader[msgheader.find('comment='):]
+  print query
+  # Extract the query parameters
+  parameters = extract_parameters_from_query(query)
+  print parameters
+  comment = parameters['comment']
+  action = parameters['action']
+  ref_clock = int(parameters['clock'])
+  ref_ip = parameters['ip']
+  ref_port = int(parameters['port'])
+  
+  print comment, action, ref_clock, ref_ip, ref_port
+  
+  # Aquire lock and increment logic clock
+  mycontext['lock'].acquire(True)
+  mycontext['clock'] += 1
+
+  # Process the query
+  # TODO ...
+   
+  # Save the src ip/port and timestamp of the query
+  entry = "%s&src_clock=%u&src_ip=%s&src_port=%u" % (query, mycontext['clock'], mycontext['ip'], mycontext['port'])
+  print entry
+
+  # Add new entry and release lock
+  mycontext['entries'].append(entry)
+  mycontext['lock'].release()
+  
+  # Send the page
+  generate_and_send_html_page(sockobj)
+
+# ------------------------------------------------------------------------------
+# Handles vesseldata request from other vessel
+# ------------------------------------------------------------------------------
+def handle_request_vesseldata(msgheader, sockobj, thiscommhandle):
+  print "Received VESSELDATA"
+
+  # TODO Handle other vesseldatas
+
+  # Extract the query from the HTTP request  
+  query = msgheader[msgheader.find('comment='):]
+  print query
+  # Extract the query parameters
+  parameters = extract_parameters_from_query(query)
+  print parameters
+
+  # Acquires lock, updates logic clock and insert new entry
+  mycontext['lock'].acquire(True)
+  mycontext['clock'] = max(mycontext['clock'], int(parameters['src_clock']))
+  insert_entry(parameters)
+  print mycontext['entries']
+  mycontext['lock'].release()
+
+  stopcomm(thiscommhandle)
+  return
+  
+# ------------------------------------------------------------------------------
+# Sends new entry to all other vessels 
+# ------------------------------------------------------------------------------   
+def send_vessel_data(entry, logicclock):
+  for (vesselip, vesselport) in mycontext['vessels']: # For each vessel
+    if vesselip != mycontext['ip'] or vesselport != mycontext['port']:
+      notsent = True # For special case when timed out execption arises
+      while notsent:
+        try:
+          # Sends VESSELDATA to vessel
+          sockobjVessel = openconn(vesselip, vesselport)
+          sockobjVessel.send('VESSELDATA\n' + entry)
+          sockobjVessel.close()
+          notsent = False
+        except Exception, e:
+          # Tries to send again if we got timed out exception, otherwise continues with next vessel
+          if str(e) != 'Connection timed out!' and str(e) != 'Timed out checking for socket cleanup!':
+            print "Exception in send_vessel_data: %s, %s\n" %(type(e), e)
+            print "for IP: %s & Port: %s Continues with next vessel\n" %(vesselip, vesselport)
+            notsent = False
+          else:
+            print "got timed out, trying again"
+
+# ------------------------------------------------------------------------------
+# Inserts the new entry at correct location
+# ------------------------------------------------------------------------------ 
+def insert_entry(para):
+  print 'Entered insert'
+  index = len(mycontext['entries'])-1
+  while True:
+    # Checks if query should be inserted first in entry list
+    if index == -1:
+      mycontext['entries'].insert(0, generate_query_from_parameters(para))
+      return
+
+    # Extracts queries for entry already in list
+    old = extract_parameters_from_query(mycontext['entries'][index])
+
+    # Converts old and input parameters to int, saves input parameters to new_YYY
+    old['src_clock'] = int(old['src_clock'])
+    old['src_ip'] = int(old['src_ip'].replace('.', ''))
+    old['src_port'] = int(old['src_port'])
+    new_clock = int(para['src_clock'])
+    tmp_ip = para['src_ip']
+    new_ip = int(tmp_ip.replace('.', ''))
+    new_port = int(para['src_port'])
+   
+
+    # Checks if msg should be inserted at index
+    if (old['src_clock'] < new_clock or # If Logic Clock is larger
+        (old['src_clock'] == new_clock and old['src_ip'] < new_ip) or # or if IP is larger
+        (old['src_clock'] == new_clock and old['src_ip'] == new_ip and old['src_port'] < new_port)): # or if Port is larger
+      mycontext['entries'].insert(index+1, generate_query_from_parameters(para))
+      return
+    index -= 1
+
+
+# ------------------------------------------------------------------------------
+# Utility function to extract query parameter from HTML query
+# ------------------------------------------------------------------------------
+def extract_parameters_from_query(msg):
+  # extract the query parameters as a dictionary: {name:value}
+  # example input format: comment=aa&clock=2&ip=127.0.0.1&port=63101&action=Delete
+  parameters={}
+  arr = msg.split('&')
+  for a in arr:
+    pp = a.split('=')
+    if len(pp)>1:
+      parameters[pp[0]] = pp[1]
+  return parameters
+
+# ------------------------------------------------------------------------------
+# Utility function to generate query from parameters
+# ------------------------------------------------------------------------------
+def generate_query_from_parameters(parameters):
+  return 'comment=' + parameters['comment'] + '&src_clock=' + str(parameters['src_clock']) + '&src_ip='\
+    + parameters['src_ip'] + '&src_port=' + parameters['src_port'] + '&action=' + parameters['action']
+
+# ------------------------------------------------------------------------------
+# Utility function to wrap an entry with HTML form markup
+# ------------------------------------------------------------------------------
+def entry_to_html(entry):
+  if len(entry) > 0:
+    # extract the query parameters
+    parameters = extract_parameters_from_query(entry)
+    comment = parameters['comment']
+    action = parameters['action']
+    src_clock = int(parameters['src_clock'])
+    src_ip = parameters['src_ip']
+    src_port = int(parameters['src_port'])
+    
+    if action == 'Add':
+      return '''<form class="entry" method="post" action="Change" >
+                  <input type="text" name="comment" value="%s" size="50"/>
+                  <input type="hidden" name="clock" value="%u" />
+                  <input type="hidden" name="ip" value="%s" />
+                  <input type="hidden" name="port" value="%u" />
+                  <input type="submit" name="action" value="Modify" />
+                  <input type="submit" name="action" value="Delete" />
+                </form>''' %(comment, src_clock, src_ip, src_port)
+  return "" 
+       
+# ------------------------------------------------------------------------------
+# Generates the html page and sends it to client
+# Optional parameters are message and error which are introduced as headers into the html.
+# ------------------------------------------------------------------------------   
+def generate_and_send_html_page(sockobj, status=""):
+  #Initialize blackboard content
+  
+  # dynamic title showing Ip address, port and up time.
+  board_title = '<div id="boardtitle_placeholder" class="boardtitle">Board contents at host: %s:%u, up time: %u sec.</div>' %(mycontext['ip'], mycontext['port'], int(getruntime()))  
+  # An optional status message
+  status_message = "<div class='status'>%s</div>" % (status)
+  
+  # convert entries to html
+  entries = [entry_to_html(e) for e in mycontext['entries'][::-1]]
+  entries = "".join(entries)
+  
+  # merging the contents of the board with the title
+  # and wrapping all with <div id="boardcontents_placeholder”>...</div>
+  content = [mycontext['headerhtml'], '<div id="boardcontents_placeholder">', board_title, status_message, entries, '</div>', mycontext['footerhtml']]   
+  
+  #Concatenate strings into huge string representing the final html
+  content = "".join(content)
+  del entries
+
+  # Sends the generated html
+  sockobj.send("HTTP/1.1 200 OK\r\nContent-type: text/html\r\n" + \
+  "Content-length: %i\r\n\r\n%s" % (len(content), content))
+  sockobj.close()
+
+  return
+  
+# ------------------------------------------------------------------------------    
+# Main entry point of the program. Initalizes global variables in mycontext
+# and calls start_board() which opens the socket for incoming connections.
+# ------------------------------------------------------------------------------
+if callfunc == 'initialize':
+  # Running remotely (assuming that we pass one input argument only when we run remotely):
+  # whenever this vessel gets a connection on its IPaddress:Clearinghouseport it'll call function board
+  if len(callargs) == 1:
+    port = int(callargs[0])
+    ip = getmyip()
+
+  # To run locally: use the loopback ip address (127.0.0.1) and a port in the range 63100 .. 63110
+  # If you start multiple local instances using different ports, you can debug and test your code locally
+  # example:
+  # python ../demokit/repy.py ../demokit/restrictions.default mainLab4.repy 127.0.0.1 63100
+  elif len(callargs) == 2:
+    port = int(callargs[1])
+    ip = callargs[0]
+  
+  # Fail if we don't have 1 or 2 arguments  
+  else:
+    raise Exception("Specify a port only for auto detection of IP, or specify IP and port")
+
+  # Initialize mycontext
+  mycontext['clock'] = 0 
+  mycontext['port'] = port
+  mycontext['ip'] = ip
+  mycontext['lock'] = getlock()
+  mycontext['vessels'] = [('127.0.0.1', 63100), ('127.0.0.1', 63101), ('127.0.0.1', 63102)]
+  mycontext['headerhtml'] = file("headerLab4.html").read()
+  mycontext['footerhtml'] = file("footerLab4.html").read()
+  mycontext['entries'] = []
+  
+  start_board() 
