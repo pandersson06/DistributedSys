@@ -86,28 +86,26 @@ def handle_request_change(msgheader, sockobj, thiscommhandle):
   # Aquire lock and increment logic clock
   mycontext['lock'].acquire(True)
   mycontext['clock'] += 1
+  tmpclock = mycontext['clock']
 
-  # Process the query
-  # TODO ...
-   
   # Save the src ip/port and timestamp of the query
-  entry = "%s&src_clock=%u&src_ip=%s&src_port=%u" % (query, mycontext['clock'], mycontext['ip'], mycontext['port'])
-  print entry
+  entry = "%s&src_clock=%u&src_ip=%s&src_port=%u" % \
+    (query, mycontext['clock'], mycontext['ip'], mycontext['port'])
 
   # Add new entry and release lock
   mycontext['entries'].append(entry)
   mycontext['lock'].release()
-  
+  print mycontext['entries']
   # Send the page
   generate_and_send_html_page(sockobj)
+  send_vessel_data(entry, tmpclock)
 
 # ------------------------------------------------------------------------------
 # Handles vesseldata request from other vessel
 # ------------------------------------------------------------------------------
 def handle_request_vesseldata(msgheader, sockobj, thiscommhandle):
   print "Received VESSELDATA"
-
-  # TODO Handle other vesseldatas
+  stopcomm(thiscommhandle)
 
   # Extract the query from the HTTP request  
   query = msgheader[msgheader.find('comment='):]
@@ -119,11 +117,10 @@ def handle_request_vesseldata(msgheader, sockobj, thiscommhandle):
   # Acquires lock, updates logic clock and insert new entry
   mycontext['lock'].acquire(True)
   mycontext['clock'] = max(mycontext['clock'], int(parameters['src_clock']))
-  insert_entry(parameters)
+  insert_entry(query)
   print mycontext['entries']
   mycontext['lock'].release()
 
-  stopcomm(thiscommhandle)
   return
   
 # ------------------------------------------------------------------------------
@@ -152,34 +149,45 @@ def send_vessel_data(entry, logicclock):
 # ------------------------------------------------------------------------------
 # Inserts the new entry at correct location
 # ------------------------------------------------------------------------------ 
-def insert_entry(para):
+def insert_entry(query):
   print 'Entered insert'
+  para = extract_parameters_from_query(query)
+  # If action delete just append query
+  if para['action'] == 'Delete':
+    mycontext['entries'].append(query)
+    return
+
+  # If action add, insert query at correct position
   index = len(mycontext['entries'])-1
   while True:
     # Checks if query should be inserted first in entry list
     if index == -1:
-      mycontext['entries'].insert(0, generate_query_from_parameters(para))
+      mycontext['entries'].insert(0, query)
       return
 
     # Extracts queries for entry already in list
     old = extract_parameters_from_query(mycontext['entries'][index])
 
-    # Converts old and input parameters to int, saves input parameters to new_YYY
-    old['src_clock'] = int(old['src_clock'])
-    old['src_ip'] = int(old['src_ip'].replace('.', ''))
-    old['src_port'] = int(old['src_port'])
-    new_clock = int(para['src_clock'])
-    tmp_ip = para['src_ip']
-    new_ip = int(tmp_ip.replace('.', ''))
-    new_port = int(para['src_port'])
-   
+    # If current entry is add, do comparison
+    if old['action'] == 'Add':
+    
+      # Converts old and input parameters to int, saves input parameters to new_YYY
+      old['src_clock'] = int(old['src_clock'])
+      old['src_ip'] = int(old['src_ip'].replace('.', ''))
+      old['src_port'] = int(old['src_port'])
+      new_clock = int(para['src_clock'])
+      tmp_ip = para['src_ip']
+      new_ip = int(tmp_ip.replace('.', ''))
+      new_port = int(para['src_port'])
+     
 
-    # Checks if msg should be inserted at index
-    if (old['src_clock'] < new_clock or # If Logic Clock is larger
-        (old['src_clock'] == new_clock and old['src_ip'] < new_ip) or # or if IP is larger
-        (old['src_clock'] == new_clock and old['src_ip'] == new_ip and old['src_port'] < new_port)): # or if Port is larger
-      mycontext['entries'].insert(index+1, generate_query_from_parameters(para))
-      return
+      # Checks if msg should be inserted at index
+      if (old['src_clock'] < new_clock or # If Logic Clock is larger
+          (old['src_clock'] == new_clock and old['src_ip'] < new_ip) or # or if IP is larger
+          (old['src_clock'] == new_clock and old['src_ip'] == new_ip and old['src_port'] < new_port)): # or if Port is larger
+        mycontext['entries'].insert(index+1, query)
+        return
+    
     index -= 1
 
 
@@ -200,9 +208,9 @@ def extract_parameters_from_query(msg):
 # ------------------------------------------------------------------------------
 # Utility function to generate query from parameters
 # ------------------------------------------------------------------------------
-def generate_query_from_parameters(parameters):
-  return 'comment=' + parameters['comment'] + '&src_clock=' + str(parameters['src_clock']) + '&src_ip='\
-    + parameters['src_ip'] + '&src_port=' + parameters['src_port'] + '&action=' + parameters['action']
+#def generate_query_from_parameters(parameters):
+#  return 'comment=' + parameters['comment'] + '&src_clock=' + str(parameters['src_clock']) + '&src_ip='\
+#    + parameters['src_ip'] + '&src_port=' + parameters['src_port'] + '&action=' + parameters['action']
 
 # ------------------------------------------------------------------------------
 # Utility function to wrap an entry with HTML form markup
@@ -240,15 +248,40 @@ def generate_and_send_html_page(sockobj, status=""):
   # An optional status message
   status_message = "<div class='status'>%s</div>" % (status)
   
-  # convert entries to html
-  entries = [entry_to_html(e) for e in mycontext['entries'][::-1]]
+  # Add all adds in a tmp entry list
+  tmp_add_entries = []
+  tmp_delete_entries = []
+  for entry in mycontext['entries']:
+    parameters = extract_parameters_from_query(entry)
+    if parameters['action'] == 'Add':
+      tmp_add_entries.append(entry)
+    elif parameters['action'] == 'Delete':
+      tmp_delete_entries.append(entry)
+  
+  # Removes deleted enties from tmp_add_entries list
+  print mycontext['entries']
+  print ''
+  for delete_entry in tmp_delete_entries:
+    delete_para = extract_parameters_from_query(delete_entry)
+    print 'Delete PARA'
+    print delete_para
+    for add_entry in tmp_add_entries:
+      add_para = extract_parameters_from_query(add_entry)
+      if (add_para['src_clock'] == delete_para['clock'] and 
+        add_para['src_ip'] == delete_para['ip'] and add_para['src_port'] == delete_para['port']):
+        tmp_add_entries.remove(add_entry)
+        print 'Deleted add'
+        print add_para
+   
+  # Convert entries to html
+  entries = [entry_to_html(e) for e in tmp_add_entries[::-1]]       
   entries = "".join(entries)
   
-  # merging the contents of the board with the title
+  # Merging the contents of the board with the title
   # and wrapping all with <div id="boardcontents_placeholder”>...</div>
   content = [mycontext['headerhtml'], '<div id="boardcontents_placeholder">', board_title, status_message, entries, '</div>', mycontext['footerhtml']]   
   
-  #Concatenate strings into huge string representing the final html
+  # Concatenate strings into huge string representing the final html
   content = "".join(content)
   del entries
 
@@ -287,7 +320,7 @@ if callfunc == 'initialize':
   mycontext['port'] = port
   mycontext['ip'] = ip
   mycontext['lock'] = getlock()
-  mycontext['vessels'] = [('127.0.0.1', 63100), ('127.0.0.1', 63101), ('127.0.0.1', 63102)]
+  mycontext['vessels'] = [('127.0.0.1', 63100), ('127.0.0.1', 63101)]
   mycontext['headerhtml'] = file("headerLab4.html").read()
   mycontext['footerhtml'] = file("footerLab4.html").read()
   mycontext['entries'] = []
