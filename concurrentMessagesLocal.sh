@@ -10,6 +10,6 @@ curl -d comment=test7 127.0.0.1:63102/Add &
 curl -d comment=test8 127.0.0.1:63102/Add &
 curl -d comment=test9 127.0.0.1:63102/Add &
 
-#curl -d comment=test10 127.0.0.1:63103/Add &
-#curl -d comment=test11 127.0.0.1:63103/Add &
-#curl -d comment=test12 127.0.0.1:63103/Add &
+curl -d comment=test10 127.0.0.1:63103/Add &
+curl -d comment=test11 127.0.0.1:63103/Add &
+curl -d comment=test12 127.0.0.1:63103/Add &

@@ -3,7 +3,7 @@ bool=true
 
 while $bool
 do
-    output=`ps aux | grep "m[a]in.repy 127.0.0.1"`
+    output=`ps aux | grep "m[a]inLab4.repy 127.0.0.1"`
     set -- $output
     echo $output
     pid=$2
