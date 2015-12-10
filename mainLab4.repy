@@ -248,7 +248,7 @@ def generate_and_send_html_page(sockobj, status=""):
   # An optional status message
   status_message = "<div class='status'>%s</div>" % (status)
   
-  # Add all adds in a tmp entry list
+  # Add all adds and deletes in different tmp lists
   tmp_add_entries = []
   tmp_delete_entries = []
   for entry in mycontext['entries']:
@@ -259,21 +259,16 @@ def generate_and_send_html_page(sockobj, status=""):
       tmp_delete_entries.append(entry)
   
   # Removes deleted enties from tmp_add_entries list
-  print mycontext['entries']
-  print ''
-  for delete_entry in tmp_delete_entries:
+  for delete_entry in tmp_delete_entries: # For each delete entry
     delete_para = extract_parameters_from_query(delete_entry)
-    print 'Delete PARA'
-    print delete_para
-    for add_entry in tmp_add_entries:
+    for add_entry in tmp_add_entries: # For each add entry
       add_para = extract_parameters_from_query(add_entry)
+      # If add and delete entry matches, remove from tmp_add_entries
       if (add_para['src_clock'] == delete_para['clock'] and 
         add_para['src_ip'] == delete_para['ip'] and add_para['src_port'] == delete_para['port']):
         tmp_add_entries.remove(add_entry)
-        print 'Deleted add'
-        print add_para
    
-  # Convert entries to html
+  # Convert remaning add entries to html
   entries = [entry_to_html(e) for e in tmp_add_entries[::-1]]       
   entries = "".join(entries)
   
