@@ -126,7 +126,7 @@ def handle_request_vesseldata(msgheader, sockobj, thiscommhandle):
     for (vip, vport, vgr) in mycontext['vessels']:
       if vip == parameters['src_ip'] and vport == int(parameters['src_port']):
         sendingvesselgroup = vgr
-    print "send group: " + sendingvesselgroup
+
     # Sends vessel data to other group
     send_vessel_data(query, sendingvesselgroup)
 
@@ -138,9 +138,9 @@ def handle_request_vesseldata(msgheader, sockobj, thiscommhandle):
 def send_vessel_data(entry, othergroup=''):
   for (vesselip, vesselport, vesselgr) in mycontext['vessels']: # For each vessel
     # Send data to same group and group ab
-    if othergroup == '' and \
+    if othergroup == '' and (mycontext['group'] == 'b' and mycontext['networkup'] == True or mycontext['group'] != 'b') \
     (mycontext['group'] == 'ab' or vesselgr == 'ab' or mycontext['group'] == vesselgr) or \
-    (othergroup != '' and othergroup != vesselgr): # For case when group ab send data to other group
+    (othergroup != '' and othergroup != vesselgr and mycontext['networkup'] == True): # For case when group ab send data to other group
       # If current vessel is not this vessel
       if vesselip != mycontext['ip'] or vesselport != mycontext['port']:
         notsent = True # For special case when timed out execption arises
@@ -300,7 +300,16 @@ def generate_and_send_html_page(sockobj, status=""):
   sockobj.close()
 
   return
-  
+
+# ------------------------------------------------------------------------------    
+# Switch network down time depending on input
+# ------------------------------------------------------------------------------
+def clock_network_switch(time):
+  while True:
+    mycontext['networkup'] = mycontext['networkup'] ^ 1
+    sleep(time)
+  return
+
 # ------------------------------------------------------------------------------    
 # Main entry point of the program. Initalizes global variables in mycontext
 # and calls start_board() which opens the socket for incoming connections.
@@ -329,6 +338,7 @@ if callfunc == 'initialize':
   mycontext['port'] = port
   mycontext['ip'] = ip
   mycontext['lock'] = getlock()
+  mycontext['networkup'] = False
   mycontext['vessels'] = [('127.0.0.1', 63100, 'a'), ('127.0.0.1', 63101, 'a'), ('127.0.0.1', 63102, 'ab'), ('127.0.0.1', 63103, 'b'), ('127.0.0.1', 63104, 'b')]
   mycontext['headerhtml'] = file("headerLab4.html").read()
   mycontext['footerhtml'] = file("footerLab4.html").read()
@@ -339,5 +349,8 @@ if callfunc == 'initialize':
   for (vip, vport, vgr) in mycontext['vessels']:
     if vip == mycontext['ip'] and vport == mycontext['port']:
       mycontext['group'] = vgr
+
+  # Setting up clock network switch
+  settimer(0, clock_network_switch, [10])
 
   start_board() 
