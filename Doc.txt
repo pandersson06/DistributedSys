@@ -1,4 +1,16 @@
 -----------------------------------------------------------------------
+-- Topology
+-----------------------------------------------------------------------
+
+Two main groups called a and b. Two vessels reside only in a and b. A
+vessel which is part of group both group is called ab. The ab vessel
+is the linking vessel between the groups.
+
+Supports:
+- Delete.
+- Simulates two groups which loses connection.
+
+-----------------------------------------------------------------------
 -- Functions
 -----------------------------------------------------------------------
 Starts the board and listens for connetions until the program is closed.
@@ -23,6 +35,8 @@ handle these types of messages:
   GET - HTML request from web client
   POST - Client posts new data to blackboard, Acquires local and distributed lock.
   VESSELDATA - Blackboard data from other vessels
+  REQSYNC - Request message sent from the group between the groups
+  SENDSYNC - Sync data from remote vessel
 board(ip, port, sockobj, thiscommhandle, listencommhandle)
   Purpose:
     Handle an incomming message.
@@ -52,16 +66,19 @@ board(ip, port, sockobj, thiscommhandle, listencommhandle)
   Returns:
     None.
 
-Sends the new blackboard entry to all other vessels.
-send_vessel_data(entry, logicclock)
+Handles POST /Add request from client. Saves new entry and send back a generated 
+html page to client.
+handle_request_add(msgheader, sockobj, thiscommhandle)
   Purpose:
-    Sends the new entry to all other vessels that are within mycontext['vessels'].
+    Handle POST /Add requests.
 
   Arguments:
-    entry:
-      The blackboard entry which will be sent to the other vessels
-    logicclock:
-      The logic clock which will be sent to the other vessels
+    msgheader:
+      Message header containing the new entry.
+    sockobj:
+      Socket object for the current connection.
+    thiscommhandler:
+      Current command handler for current connection.
 
   Exceptions:
     None.
@@ -71,7 +88,178 @@ send_vessel_data(entry, logicclock)
 
   Returns:
     None.
+    
+Handles POST /Change request from client. Saves delete entry and send back a 
+generated html page to client.
+handle_request_change(msgheader, sockobj, thiscommhandle)
+  Purpose:
+    Handle POST /Change requests.
 
+  Arguments:
+    msgheader:
+      Message header containing the deleted entry.
+    sockobj:
+      Socket object for the current connection.
+    thiscommhandler:
+      Current command handler for current connection. 
+
+  Exceptions:
+    None.
+
+  Side Effects:
+    Starts connections to several vessels.
+
+  Returns:
+    None.
+    
+Handles VESSELDATA request from other vessels. Updates local entries and logic 
+clock. If vessel is member of group ab, it passes the new entry to the vessels 
+in the opposite group.
+handle_request_vesseldata(msgheader, sockobj, thiscommhandle)
+  Purpose:
+    Handle VESSELDATA requests.
+
+  Arguments:
+    msgheader:
+      Message header containing the new/delete entry.
+    sockobj:
+      Socket object for the current connection.
+    thiscommhandler:
+      Current command handler for current connection. 
+
+  Exceptions:
+    None.
+
+  Side Effects:
+    May starts connections to several vessels.
+
+  Returns:
+    None.
+
+Handles SENDSYNC messages from other vessels. Synchronize this vessel entries 
+with the recieved entries.
+handle_request_vesseldata(msgheader, sockobj, thiscommhandle)
+  Purpose:
+    Handle SENDSYNC messages.
+
+  Arguments:
+    msgheader:
+      Message header containing the history of entries.
+    sockobj:
+      Socket object for the current connection.
+    thiscommhandler:
+      Current command handler for current connection. 
+
+  Exceptions:
+    None.
+
+  Side Effects:
+    May starts connections to several vessels if vessel is member of group ab.
+
+  Returns:
+    None.
+
+Sends the new blackboard entry to all vessels within its own group and group ab.
+send_vessel_data(entry, othergroup='')
+  Purpose:
+    Sends the new entry to correct vessels.
+
+  Arguments:
+    entry:
+      The blackboard entry which will be sent to the other vessels
+    othergroup:
+      Optional paramter for sending to opposite group
+
+  Exceptions:
+    None.
+
+  Side Effects:
+    Starts connections to several vessels.
+
+  Returns:
+    None.
+    
+
+Sends entry to specified vessel with the input entry and entry type.
+send_data(ip, port, entry, etype)
+  Purpose:
+    Sends the entry to specified vessel.
+
+  Arguments:
+    ip:
+      Ip of target vessel
+    port:
+      Port of target vessel
+    entry:
+      The blackboard entry which will be sent to the specified vessels
+    etype:
+      Type of entry
+
+  Exceptions:
+    None.
+
+  Side Effects:
+    Starts connections to a vessel.
+
+  Returns:
+    None.
+    
+    
+Inserts the new message entry/query in the correct position within the entry list.
+Sorts first by logic clock, then highest ip and last highest port.
+insert_entry(query)
+  Purpose:
+    Insert query in entry list.
+
+  Arguments:
+    query:
+      The new entry/query, which is inserted into the entries list
+
+  Exceptions:
+    None.
+
+  Side Effects:
+    None.
+
+  Returns:
+    None.
+    
+Extracts parameters from query/entry. Creates a dictionary.
+Example query/entry: comment=aa&clock=2&ip=127.0.0.1&port=63101&action=Delete
+extract_parameters_from_query(query)
+  Purpose:
+    Extract parameters from query.
+
+  Arguments:
+    query:
+      Which query parameters should be exctracted
+
+  Exceptions:
+    None.
+
+  Side Effects:
+    None.
+
+  Returns:
+    A dictinary.
+    
+Generates a html from a entry. Creates a html with blackboard entry and two buttons. 
+entry_to_html(entry)
+  Purpose:
+    Generate a html from a entry.
+
+  Arguments:
+    entry:
+      Entry which should be generated to html
+
+  Exceptions:
+    None.
+
+  Side Effects:
+    None.
+
+  Returns:
+    A html string.
 
 Generates and sends the html page to the client which the sockobj is connected to.
 generate_and_send_html_page(sockobj, status="")
@@ -93,20 +281,40 @@ generate_and_send_html_page(sockobj, status="")
   Returns:
     None.
 
-Inserts the new message entry in the correct position within the entry list.
-insert_entry(msg)
+
+Clock switching function which simulates on and off network. Never returns.  
+clock_network_switch(time)
   Purpose:
-    Insert message in entry list.
+    Turn off and on network.
 
   Arguments:
-    msg:
-      The new entry, is a tuple (Blackboard Entry, Logic Clock, Ip, Port)
+    time:
+      Switching time
 
   Exceptions:
     None.
 
   Side Effects:
     None.
+
+  Returns:
+    None.
+
+
+Synchronize the network. Sends REQSYNC to group b, sync ab entries and lastly 
+sends history to all vessels. 
+sync_network()
+  Purpose:
+    Synchronize network.
+
+  Arguments:
+    None.
+
+  Exceptions:
+    None.
+
+  Side Effects:
+    Starts connections to several vessels.
 
   Returns:
     None.
