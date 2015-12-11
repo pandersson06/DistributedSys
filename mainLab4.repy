@@ -168,10 +168,6 @@ def handle_request_sendsync(msgheader, sockobj, thiscommhandle):
     parameterlast = extract_parameters_from_query(entry)
     mycontext['clock'] = max(mycontext['clock'], int(parameterlast['src_clock']))
 
-  # Insert entry if mycontext entries list is empty
-  #if len(mycontext['entries']) == 0:
-  #  insert_entry(entry)
-
   # Inserts entry in mycontext if it not already present
   for entry in msgentries:
     if not entry in mycontext['entries']:
@@ -193,10 +189,25 @@ def handle_request_sendsync(msgheader, sockobj, thiscommhandle):
 # ------------------------------------------------------------------------------   
 def send_vessel_data(entry, othergroup=''):
   for (vesselip, vesselport, vesselgr) in mycontext['vessels']: # For each vessel
-    # Send data to same group and group ab
-    if othergroup == '' and \
-    ((mycontext['group'] == 'ab' and (mycontext['networkup'] or vesselgr == 'a')) or vesselgr == 'ab' or mycontext['group'] == vesselgr) or \
-    (othergroup != '' and othergroup != vesselgr and mycontext['networkup']): # For case when group ab send data to other group
+    
+    # Bool for if group ab should send data to vessel this iteration
+    # True if network is up and vesselgr is a  
+    sendgroupab = mycontext['group'] == 'ab' and (mycontext['networkup'] or vesselgr == 'a')
+    
+    # Bool for if group a or b should send data to vessel this iteration
+    # True if iteration group is ab or the same as this vessel group
+    sendgroup = vesselgr == 'ab' or mycontext['group'] == vesselgr
+    
+    # Bool for when group working normal. 
+    # True if othergroup is empty and sendgroupab or sendgroup is true.
+    sendnormal = othergroup == '' and (sendgroupab or sendgroup)
+    
+    # Bool for when group ab should send to next group. Depends on input othergroup.
+    # True if othergroup is not empty and input othergroup is not this iteration group and if network is up.
+    sendtoothergroup = othergroup != '' and othergroup != vesselgr and mycontext['networkup']
+    
+    # Send depending on "send normal" and "send to other group"
+    if sendnormal or sendtoothergroup:
       # If current vessel is not this vessel
       if vesselip != mycontext['ip'] or vesselport != mycontext['port']:
         send_data(vesselip, vesselport, entry, 'VESSELDATA')
