@@ -10,7 +10,7 @@ def start_board():
   print "Listening on IP " + str(ip) +" port " + str(port)
   try: 
     listencommhandle = waitforconn(ip,port,board)
-  except Exception as e:
+  except Exception, e:
     print "Exception in start_board: %s, %s\n" %(type(e), e)
 
 # ------------------------------------------------------------------------------    
@@ -43,7 +43,7 @@ def board(ip, port, sockobj, thiscommhandle, listencommhandle):
       handle_request_sendsync(msgheader, sockobj, thiscommhandle)        
     else:
       print "Got something else"
-  except Exception as e:
+  except Exception, e:
     print "Exception in board: %s, %s\n" %(type(e), e)
     
 
@@ -452,4 +452,4 @@ if callfunc == 'initialize':
     mycontext['nrsync'] = 0
     settimer(0, clock_network_switch, [30])
 
-  start_board() 
+  start_board()
