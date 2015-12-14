@@ -3,7 +3,7 @@
 -----------------------------------------------------------------------
 
 Two main groups called a and b. Two vessels reside only in a and b. A
-vessel which is part of group both group is called ab. The ab vessel
+vessel which is part of both group is called ab. The ab vessel
 is the linking vessel between the groups.
 
 Supports:
@@ -131,7 +131,7 @@ handle_request_vesseldata(msgheader, sockobj, thiscommhandle)
     None.
 
   Side Effects:
-    May starts connections to several vessels.
+    May start connections to several vessels.
 
   Returns:
     None.
@@ -154,7 +154,7 @@ handle_request_vesseldata(msgheader, sockobj, thiscommhandle)
     None.
 
   Side Effects:
-    May starts connections to several vessels if vessel is member of group ab.
+    May start connections to several vessels if vessel is member of group ab.
 
   Returns:
     None.
